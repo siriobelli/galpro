@@ -1,5 +1,6 @@
 import prospect
 from .sfh import create_sfh
+from .utils import ivarsmooth
 import numpy as np
 import warnings
 import sys
@@ -7,7 +8,6 @@ from os.path import realpath
 from matplotlib import pyplot as plt
 from astropy.cosmology import WMAP9 as cosmo
 from matplotlib.ticker import FormatStrFormatter
-from scipy.ndimage.filters import convolve1d
 
 # according to the Numpy version, default_rng may not be available
 try:
@@ -68,7 +68,11 @@ class ProspectorFit:
             else:
                 for i in range(config[parname]['N']):
                     appropriate_list.append(parname+'_{0}'.format(i+1))
-
+        
+        # add special parameters 
+        if 'f_outlier_spec' in self.primary_parameters + self.secondary_parameters:
+            self.special_parameters.append('N_outlier_spec')
+        
         # set auxiliary attributes
         self.mfrac_chain = None
     
@@ -211,6 +215,11 @@ class ProspectorFit:
                     sfh = create_sfh(self.model)
                     chain[i] = sfh.ageform(x) - sfh.ageform(y)
                 return chain
+            
+            if parm_name == 'N_outlier_spec':
+                w_used = np.where(self.obs['mask'] == True)[0]
+                N_pix = len(w_used)
+                return N_pix * self.parameter_chain('f_outlier_spec')
                 
             
         # if we make it until here, parm_name is not good
@@ -794,10 +803,10 @@ class ProspectorFit:
             else:
                 smooth_width = int(smooth)
                 
-            obs_flux = self.ivarsmooth(obs_flux, 1.0/self.obs['unc']**2, smooth_width)
-            map_flux = self.ivarsmooth(map_flux, np.ones(len(map_flux)), smooth_width)
-            lo_flux = self.ivarsmooth(lo_flux, np.ones(len(map_flux)), smooth_width)
-            hi_flux = self.ivarsmooth(hi_flux, np.ones(len(map_flux)), smooth_width)
+            obs_flux = ivarsmooth(obs_flux, 1.0/self.obs['unc']**2, smooth_width)
+            map_flux = ivarsmooth(map_flux, np.ones(len(map_flux)), smooth_width)
+            lo_flux = ivarsmooth(lo_flux, np.ones(len(map_flux)), smooth_width)
+            hi_flux = ivarsmooth(hi_flux, np.ones(len(map_flux)), smooth_width)
             
         # parts of observed spectrum actually used in the fit
         obs_flux_masked = obs_flux.copy()
@@ -1002,19 +1011,5 @@ class ProspectorFit:
         return np.exp(-attn_curve-dust1_curve)
         
         
-    @staticmethod
-    def ivarsmooth(flux, ivar, width):
-        """
-        Return the inverse-variance smoothed spectrum; width is the size of
-        the smoothing window in pixels.
-        """
-        
-        #  inspired by https://github.com/themiyan/astronomy
-        weights = np.ones(int(width))
-        convolved_numerator = convolve1d(flux * ivar , weights, mode='constant')
-        convolved_denominator = convolve1d(ivar, weights, mode='constant')
-        smoothed_flux = convolved_numerator / convolved_denominator 
-
-        return smoothed_flux
-
+    
         
