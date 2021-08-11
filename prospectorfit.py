@@ -107,10 +107,14 @@ class ProspectorFit:
         return ret
         
         
-    def parameter_statistic(self, parm_name, statistic, percentile=None, x=None, y=None):
+    def parameter_statistic(self, parm_name, statistic, percentile=None, x=None, y=None, N_random=None):
         """
         Return the specified statistic for the specified parameter.
-        Choose among 'MAP', 'bestfit', 'mean', 'stddev', 'median', 'percentile'
+        For the statistic you can choose among 'MAP', 'bestfit', 'mean',
+        'stddev', 'median', 'percentile'. If 'percentile', then you also need to 
+        provide a number between 0 and 100. 
+        Some special parameters, such as ageform_x, depend on one or two additional numbers, x and y.
+        If N_random is set, only a subset of the chain is used (to make things faster).
         """
 
         # check that input is valid
@@ -120,9 +124,8 @@ class ProspectorFit:
         if (percentile != None) & (statistic != 'percentile'):
             raise ValueError("percentile argument can be set only when statistic='percentile'")
 
-        # get the full posterior chain for this parameter
-        chain = self.parameter_chain(parm_name, x, y)
-        weights = self.result['weights'].squeeze()
+        # get the posterior chain for this parameter
+        chain, weights = self.parameter_chain(parm_name, x, y, N_random)
         
         if statistic == 'MAP':
             imax = np.argmax(self.result['lnprobability'])
@@ -141,87 +144,106 @@ class ProspectorFit:
             return np.sqrt(variance)
 
         if statistic == 'median':
-            return self.parameter_statistic(parm_name, 'percentile', 50, x, y)
-
+            return self.weighted_percentile(chain, weights, 50)
+            
         if statistic == 'percentile':
             if percentile == None:
                 raise ValueError("when statistic='percentile', percentile argument must also be provided")
             return self.weighted_percentile(chain, weights, percentile)
 
     
-    def parameter_chain(self, parm_name, x=None, y=None):
+    def parameter_chain(self, parm_name, x=None, y=None, N_random=None):
         """
-        Return the full posterior chain for a given parameter. Some of the 
-        special parameters, such as ageform_x, depend on one or two additional numbers, x and y
+        Return the posterior chain for a given parameter and the corresponding weights.
+        If N_random is set, only a subset of the chain is returned (to make things faster).
+        Some special parameters, such as ageform_x, depend on one or two additional numbers, x and y
         """
         
-        Nchain = len(self.result['weights'])
+        if N_random is None:
+            return self.parameter_subchain(parm_name, x=x, y=y), self.result['weights']
+        else:
+            w_random = random_choice(len(self.result["chain"]), size=N_random, p=self.result["weights"])
+            return self.parameter_subchain(parm_name, x=x, y=y, indices=w_random), self.result['weights'][w_random]
+
         
+
+    def parameter_subchain(self, parm_name, x=None, y=None, indices=None):
+        """
+        Return a subset of the posterior chain for a given parameter. If indices == None, return the full chain. 
+        Some of the special parameters, such as ageform_x, depend on one or two additional numbers, x and y.
+        """
+        
+        if indices is None:
+            w_sub = range(len(self.result['weights']))
+        else:
+            w_sub = indices
+
+        # initialize chain
+        chain = np.zeros(len(w_sub))
+
         # if the parameter is primary, take the chain directly from the results
         if parm_name in self.primary_parameters:
             w_parm = np.array([p == parm_name for p in np.array(self.primary_parameters)], dtype=bool)
-            return self.result['chain'][:, w_parm].squeeze()
-        
+            chain = self.result['chain'][w_sub, w_parm].squeeze()
+            return chain
+
         # if the parameter is secondary, make the chain using model.set_parameters
         if parm_name in self.secondary_parameters:
-            chain = np.zeros(Nchain)
-            for i in range(Nchain):
-                self.model.set_parameters(self.result['chain'][i])
+            for i, w in enumerate(w_sub):
+                self.model.set_parameters(self.result['chain'][w])
                 chain[i] = self.model.params[parm_name][0]
             return chain
-        
+
         # if the parameter is fixed, there is not much of a chain 
         if parm_name in self.fixed_parameters:
             warnings.warn("{} is a fixed parameter: chain elements are identical".format(parm_name))
-            return np.full(Nchain, self.model.params[parm_name][0])
-        
+            return chain + self.model.params[parm_name][0]
+
         # special cases that must be handled individually
         if parm_name in self.special_parameters:
 
             if parm_name == 'mfrac':
                 if self.mfrac_chain is None:
                     self.set_mfrac()
-                return self.mfrac_chain
+                return self.mfrac_chain[w_sub]
 
             if parm_name == 'logmass_surv':
-                return self.parameter_chain('logmass') + np.log10(self.mfrac_chain)
-                
+                return self.parameter_subchain('logmass', indices=w_sub) + np.log10(self.parameter_subchain('mfrac', indices=w_sub))
+
             if parm_name == 'mean_sfr_x':
                 if x==None:
-                    raise ValueError("mean_sfr_x requires the extra parameter 'x', the lookback time in years over which to average the SFR ")
-                chain = np.zeros(Nchain)
-                for i, theta in enumerate(self.result['chain']):
-                    self.model.set_parameters(theta)
+                    raise ValueError("mean_sfr_x requires the extra parameter 'x', the lookback time in years over which to average the SFR")
+                for i, w in enumerate(w_sub):
+                    self.model.set_parameters(self.result['chain'][w])
                     sfh = create_sfh(self.model)
                     chain[i] = sfh.mean_sfr(x)
                 return chain
-                
+
             if parm_name == 'ageform_x':
                 if x==None:
                     raise ValueError("ageform_x requires the extra parameter 'x', the fraction of mass formed (0 < x < 100)")
-                chain = np.zeros(Nchain)
-                for i, theta in enumerate(self.result['chain']):
-                    self.model.set_parameters(theta)
+                for i, w in enumerate(w_sub):
+                    self.model.set_parameters(self.result['chain'][w])
                     sfh = create_sfh(self.model)
                     chain[i] = sfh.ageform(x)
                 return chain
-                
+
             if parm_name == 'ageform_x_y':
                 if (x==None) | (y==None):
-                    raise ValueError("ageform_x_y requires two extra parameters 'x' and 'y' (0 < x < y < 100)")
-                chain = np.zeros(Nchain)
-                for i, theta in enumerate(self.result['chain']):
-                    self.model.set_parameters(theta)
+                    raise ValueError("ageform_x_y requires two extra parameters 'x' and 'y', "\
+                        "the fraction of mass formed at the edges of the interval (0 < x < y < 100)")
+                for i, w in enumerate(w_sub):
+                    self.model.set_parameters(self.result['chain'][w])
                     sfh = create_sfh(self.model)
                     chain[i] = sfh.ageform(x) - sfh.ageform(y)
                 return chain
-            
+
             if parm_name == 'N_outlier_spec':
                 w_used = np.where(self.obs['mask'] == True)[0]
                 N_pix = len(w_used)
-                return N_pix * self.parameter_chain('f_outlier_spec')
-                
-            
+                return N_pix * self.parameter_subchain('f_outlier_spec', indices=w_sub)
+
+
         # if we make it until here, parm_name is not good
         self.list_parameters()
         raise ValueError("{} is not a valid parameter name.")                
