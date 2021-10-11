@@ -611,11 +611,12 @@ class ProspectorFit:
             'tau': r'$\tau$ (Gyr)',
         }
 
-        # for non-parametric SFH, add nicely formatted bin names
+        # for non-parametric SFH, add nicely formatted bin names (both for mass and logSFR_ratio)
         if 'agebins' in self.model.params:
             bin_edges = ['{:.2g}'.format(10**(t[1]-9)) for t in self.model.params['agebins']]
-            for i in range(len(bin_edges)-1):
+            for i in range(len(bin_edges)):
                 dic_goodnames['logsfr_ratios_' +str(i+1)] = r'log $R_{' + bin_edges[i] + '}$'
+                dic_goodnames['mass_'+str(i+1)] = r'$\tilde M_{' + bin_edges[i] + r'} \ (10^{10} M_\odot)$'
 
         # now take the good names when present, otherwise leave the prospector one
         for k in dic_names.keys():
@@ -636,20 +637,20 @@ class ProspectorFit:
             # set scaling for this parameter (this should be consistent
             # with the labels defined above)
             scaling = 1.0
-            if par_name == 'mass':
+            if (par_name == 'mass') | ('mass_' in par_name) :
                 scaling = 1e-10
 
             # get the prior for this parameter
-            if 'logsfr_ratios' in par_name:
+            if 'logsfr_ratios_' in par_name:
                 prior = lambda x: self.model.config_dict['logsfr_ratios']['prior'](x).T[0]
                 nd_range = self.model.config_dict['logsfr_ratios']['prior'].range
                 prior_range = (nd_range[0][0], nd_range[1][0])
                 if round(prior_range[0]) != round(prior_range[1]):
                     prior_range = (round(nd_range[0][0]), round(nd_range[1][0]))
-            elif 'mass' in par_name:
+            elif 'mass_' in par_name:
                 prior = lambda x: self.model.config_dict['mass']['prior'](x).T[0]
                 nd_range = self.model.config_dict['mass']['prior'].range
-                prior_range = (nd_range[0][0], nd_range[1][0])
+                prior_range = (nd_range[0][0] * scaling, nd_range[1][0] * scaling)
             else:
                 prior = self.model.config_dict[par_name]['prior']
                 prior_range = np.array(prior.range) * scaling
