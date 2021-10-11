@@ -653,7 +653,7 @@ class ProspectorFit:
 
 
             # show posterior
-            ax_par.hist(self.parameter_chain(par_name) * scaling, weights=self.result['weights'], range=prior_range, bins=30, histtype='stepfilled', align='mid', color='forestgreen')
+            ax_par.hist(self.parameter_chain(par_name)[0] * scaling, weights=self.result['weights'], range=prior_range, bins=30, histtype='stepfilled', align='mid', color='forestgreen')
 
             # show prior
             if show_prior == True:
