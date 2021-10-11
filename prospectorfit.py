@@ -643,14 +643,16 @@ class ProspectorFit:
             if 'logsfr_ratios' in par_name:
                 prior = lambda x: self.model.config_dict['logsfr_ratios']['prior'](x).T[0]
                 nd_range = self.model.config_dict['logsfr_ratios']['prior'].range
-                prior_range = (round(nd_range[0][0]), round(nd_range[1][0]))
-                if prior_range[0] == prior_range[1]:
-                    prior_range = (nd_range[0][0], nd_range[1][0])
-                #prior_range = np.array([-4,4])
+                prior_range = (nd_range[0][0], nd_range[1][0])
+                if round(prior_range[0]) != round(prior_range[1]):
+                    prior_range = (round(nd_range[0][0]), round(nd_range[1][0]))
+            elif 'mass' in par_name:
+                prior = lambda x: self.model.config_dict['mass']['prior'](x).T[0]
+                nd_range = self.model.config_dict['mass']['prior'].range
+                prior_range = (nd_range[0][0], nd_range[1][0])
             else:
                 prior = self.model.config_dict[par_name]['prior']
                 prior_range = np.array(prior.range) * scaling
-
 
             # show posterior
             ax_par.hist(self.parameter_chain(par_name)[0] * scaling, weights=self.result['weights'], range=prior_range, bins=30, histtype='stepfilled', align='mid', color='forestgreen')
