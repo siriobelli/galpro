@@ -1,3 +1,3 @@
 from .prospectorfit import ProspectorFit
-from .sfh import identify_sfh_type, create_sfh, NonparametricSFH, ExponentialSFH 
+from .sfh import create_sfh
 from .utils import ivarsmooth

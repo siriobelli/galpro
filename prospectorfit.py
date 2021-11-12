@@ -13,10 +13,12 @@ from matplotlib.ticker import FormatStrFormatter
 try:
     rng = np.random.default_rng(7936534)
     random_choice = rng.choice
+    random_normal = rng.normal
 except:
     warnings.warn('default_rng not found, using older numpy.random functions')
     np.random.seed(7936534)
     random_choice = np.random.choice
+    random_normal = np.random.normal
 
 
 
@@ -473,6 +475,26 @@ class ProspectorFit:
         calibration[(wave < wavemin) | (wave > wavemax)] = np.nan
 
         return calibration
+
+
+    def mock_obs(self):
+        """
+        Create and return a mock obs dictionary assuming that the MAP model is a perfect description
+        of the intrinsic properties of the galaxy, and adopting the same observational
+        setup (spectral bins, photometric bands) and uncertainties as the real observations.
+        """
+
+        # start with the real obs dictionary
+        # the only fields we will change are 'maggies' and 'spectrum'
+        mock_obs = self.obs.copy()
+
+        # let's start with the photometry
+        mock_obs['maggies'] = random_normal(loc=self.phot_MAP(), scale=mock_obs['maggies_unc'])
+
+        # now let's update the spectroscopy
+        mock_obs['spectrum'] = random_normal(loc=self.calibspec_MAP()[1], scale=mock_obs['unc'])
+
+        return mock_obs
 
 
     def chisquare_spec(self, reduced=True):
