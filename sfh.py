@@ -155,10 +155,11 @@ class NonparametricSFH(SFH):
         return np.piecewise(time, condlist, funclist)
 
 
-    def time_axis(self, epsilon = 1e-4):
+    def time_axis(self, epsilon=1e-4, zeropoint=False):
         """
         Return the optimal look-back time axis, in years, for plotting the SFH
         epsilon controls the spacing between the end of a bin and the beginning of next bin
+        if zeropoint is True, include a point older than the oldest bin (where SFR=0)
         """
 
         # code taken from FastStepBasis.convert_sfh
@@ -168,7 +169,9 @@ class NonparametricSFH(SFH):
         maxage = agebins_yrs.max()
         t = np.concatenate((bin_edges * (1.-epsilon), bin_edges * (1+epsilon)))
         t.sort()
-        t = t[1:-1] # remove older than oldest bin, younger than youngest bin
+        t = t[1:] # remove younger than youngest bin
+        if zeropoint == False:
+            t = t[:-1] # remove older than oldest bin
         return t
 
 
@@ -228,13 +231,19 @@ class ExponentialSFH(SFH):
         return np.piecewise(time, condlist, funclist)
 
 
-    def time_axis(self, N = 200):
+    def time_axis(self, N=200, zeropoint=False):
         """
         Return the optimal look-back time axis, in years, for plotting the SFH
         N is the number of elements in the output array
+        if zeropoint is True, include a point older than the model age (where SFR=0)
         """
 
-        return np.linspace(0.0, self.tage, N)
+        if zeropoint == True:
+            tmax = self.tage * (N+1.0)/float(N)
+        else:
+            tmax = self.tage
+
+        return np.linspace(0.0, tmax, N)
 
 
     def mass_formed(self, t):
@@ -296,13 +305,19 @@ class DelayedExponentialSFH(SFH):
         return np.piecewise(time, condlist, funclist)
 
 
-    def time_axis(self, N = 200):
+    def time_axis(self, N=200, zeropoint=False):
         """
         Return the optimal look-back time axis, in years, for plotting the SFH
         N is the number of elements in the output array
+        if zeropoint is True, include a point older than the model age (where SFR=0)
         """
 
-        return np.linspace(0.0, self.tage, N)
+        if zeropoint == True:
+            tmax = self.tage * (N+1.0)/float(N)
+        else:
+            tmax = self.tage
+
+        return np.linspace(0.0, tmax, N)
 
 
     def mass_formed(self, t):
